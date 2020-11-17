@@ -34,7 +34,7 @@
     .text
     .globl   start, _start
 start:
-efi32_start:
+__efi32_start:
 _start:
     cmpl    $MULTIBOOT2_BOOTLOADER_MAGIC, %eax
     jne     0f
@@ -47,7 +47,88 @@ _start:
     /* jump to the main body of C code */
     jmp   EXT_C(grub_main)
 
-efi64_start:
+/*
+ *  Support for booting GRUB from a Multiboot2 boot loader (e.g. GRUB itself).
+ */
+#define MULTIBOOT2_ARCH MULTIBOOT2_ARCHITECTURE_I386
+    .align  8 /* force 8-byte alignment */
+mb2_hdr:
+    /* magic */
+    .long   MULTIBOOT2_HEADER_MAGIC
+    /* architecture */
+    .long   MULTIBOOT2_ARCH
+    /* header length */
+    .long   mb2_hdr_end - mb2_hdr
+    /* checksum */
+    .long   -(MULTIBOOT2_HEADER_MAGIC + MULTIBOOT2_ARCH + (mb2_hdr_end - mb2_hdr))
+    .align  8
+inf_tag_start:
+    .short  MULTIBOOT_HEADER_TAG_INFORMATION_REQUEST
+    .short  MULTIBOOT2_HEADER_TAG_REQUIRED
+    .long   inf_tag_end - inf_tag_start
+    .long   MULTIBOOT2_TAG_TYPE_BASIC_MEMINFO
+    .long   MULTIBOOT2_TAG_TYPE_MMAP
+inf_tag_end:
+    .align  8
+align_tag_start:
+    .short  MULTIBOOT2_HEADER_TAG_MODULE_ALIGN
+    .short  MULTIBOOT2_HEADER_TAG_REQUIRED
+    .long   align_tag_end - align_tag_start
+align_tag_end:
+    .align  8
+console_tag_start:
+    .short  MULTIBOOT_HEADER_TAG_CONSOLE_FLAGS
+    .short  MULTIBOOT2_HEADER_TAG_REQUIRED
+    .long   console_tag_end - console_tag_start
+    .long   MULTIBOOT2_CONSOLE_FLAGS_CONSOLE_REQUIRED
+console_tag_end:
+    .align  8
+fb_tag_start:
+    .short  MULTIBOOT_HEADER_TAG_FRAMEBUFFER
+    .short  MULTIBOOT_HEADER_TAG_OPTIONAL
+    .long   fb_tag_end - fb_tag_start
+    .long   1024
+    .long   768
+    .long   32
+fb_tag_end:
+    .align  8
+bs_tag_start:
+    .short  MULTIBOOT_HEADER_TAG_EFI_BS
+    .short  MULTIBOOT_HEADER_TAG_OPTIONAL
+    .long   bs_tag_end - bs_tag_start
+bs_tag_end:
+    .align  8
+efi64_tag_start:
+    .short  MULTIBOOT_HEADER_TAG_ENTRY_ADDRESS_EFI64
+    .short  MULTIBOOT_HEADER_TAG_OPTIONAL
+    .long   efi64_tag_end - efi64_tag_start
+    .long   __efi64_start - 0x9000
+efi64_tag_end:
+    .align  8
+efi32_tag_start:
+    .short  MULTIBOOT_HEADER_TAG_ENTRY_ADDRESS_EFI32
+    .short  MULTIBOOT_HEADER_TAG_OPTIONAL
+    .long   efi32_tag_end - efi32_tag_start
+    .long   __efi32_start - 0x9000
+efi32_tag_end:
+    .align  8
+tag_end:
+    .short  MULTIBOOT2_HEADER_TAG_END
+    .short  MULTIBOOT2_HEADER_TAG_REQUIRED
+    .long   tag_end_end - tag_end
+tag_end_end:
+mb2_hdr_end:
+
+    .code64
+__efi64_start:
+    cld
+
+
+x86_32_switch:
+    mov     %r15, %rdi
+    lea     0x9000(%rip), %r15
+    cli
+    lgdt    gdtdesc
     movl    %eax, LOCAL(mb2_eax)
     movl    %ebx, LOCAL(mb2_ebx)
     /* disable paging */
@@ -72,64 +153,6 @@ LOCAL(mb2_eax):
 LOCAL(mb2_ebx):
     .long   0
     jmp     start
-
-/*
- *  Support for booting GRUB from a Multiboot2 boot loader (e.g. GRUB itself).
- */
-#define MULTIBOOT2_ARCH MULTIBOOT2_ARCHITECTURE_I386
-    .align  8 /* force 8-byte alignment */
-mb2_hdr:
-    /* magic */
-    .long   MULTIBOOT2_HEADER_MAGIC
-    /* architecture */
-    .long   MULTIBOOT2_ARCH
-    /* header length */
-    .long   mb2_hdr_end - mb2_hdr
-    /* checksum */
-    .long   -(MULTIBOOT2_HEADER_MAGIC + MULTIBOOT2_ARCH + (mb2_hdr_end - mb2_hdr))
-    .align  8
-fb_tag_start:
-    .short  MULTIBOOT_HEADER_TAG_FRAMEBUFFER
-    .short  MULTIBOOT_HEADER_TAG_OPTIONAL
-    .long   fb_tag_end - fb_tag_start
-    .long   1024
-    .long   768
-    .long   32
-fb_tag_end:
-    .align  8
-bs_tag_start:
-    .short  MULTIBOOT_HEADER_TAG_EFI_BS
-    .short  MULTIBOOT_HEADER_TAG_OPTIONAL
-    .long   bs_tag_end - bs_tag_start
-bs_tag_end:
-    .align  8
-console_tag_start:
-    .short  MULTIBOOT_HEADER_TAG_CONSOLE_FLAGS
-    .short  0
-    .long   console_tag_end - console_tag_start
-    .long   0
-console_tag_end:
-    .align  8
-efi64_tag_start:
-    .short  MULTIBOOT_HEADER_TAG_ENTRY_ADDRESS_EFI64
-    .short  MULTIBOOT_HEADER_TAG_OPTIONAL
-    .long efi64_tag_end - efi64_tag_start
-    .long   efi64_start
-efi64_tag_end:
-    .align  8
-efi32_tag_start:
-    .short  MULTIBOOT_HEADER_TAG_ENTRY_ADDRESS_EFI32
-    .short  MULTIBOOT_HEADER_TAG_OPTIONAL
-    .long efi32_tag_end - efi32_tag_start
-    .long   efi32_start
-efi32_tag_end:
-    .align  8
-tag_end:
-    .word   0
-    .word   0
-    .long   8
-tag_end_end:
-mb2_hdr_end:
 
 #include "../realmode.S"
 #include "../int.S"
